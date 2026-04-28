@@ -30,50 +30,63 @@
 <div id="player"></div>
 
 <script>
-  // --- Διαβάζουμε τις παραμέτρους ---
   var params  = new URLSearchParams(window.location.search);
-  var vParam  = params.get('v');   // "ID1,ID2,ID3" ή "ID1"
-  var iParam  = parseInt(params.get('i') || '0', 10);
+  var vParam  = params.get('v');   // "ID1,ID2,ID3"
+  var tParam  = parseInt(params.get('t') || '0', 10); // Unix timestamp έναρξης
 
   if (!vParam) {
-    // Αρχική σελίδα — δεν φορτώνουμε καν το IFrame API
     document.getElementById('home').style.display = 'flex';
   } else {
-    var ids      = vParam.split(',');
-    var current  = iParam < ids.length ? iParam : 0;
+    var ids     = vParam.split(',');
+    var current = 0;
 
-    // Φόρτωση YouTube IFrame API
+    // Υπολογίζουμε πόσα δευτερόλεπτα έχουν περάσει από την έναρξη
+    // tParam είναι Unix time (seconds). Date.now() είναι ms.
+    var startOffset = tParam > 0 ? Math.floor(Date.now() / 1000) - tParam : 0;
+    if (startOffset < 0) startOffset = 0;
+
     var tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
     document.head.appendChild(tag);
 
     var player;
+    var seeked = false; // κάναμε ήδη seek για το πρώτο video;
 
     window.onYouTubeIframeAPIReady = function() {
       player = new YT.Player('player', {
         videoId: ids[current],
         playerVars: {
-          autoplay:        1,
-          controls:        1,
-          rel:             0,
-          modestbranding:  1,
-          playsinline:     1
+          autoplay:       1,
+          controls:       1,
+          rel:            0,
+          modestbranding: 1,
+          playsinline:    1,
+          start:          startOffset  // YouTube native start — fallback
         },
         events: {
+          onReady:       onPlayerReady,
           onStateChange: onPlayerStateChange
         }
       });
     };
 
+    function onPlayerReady(event) {
+      // Seek ακριβής — πιο αξιόπιστο από το playerVars.start
+      if (startOffset > 0 && !seeked) {
+        seeked = true;
+        event.target.seekTo(startOffset, true);
+      }
+      event.target.playVideo();
+    }
+
     function onPlayerStateChange(event) {
-      // YT.PlayerState.ENDED == 0
       if (event.data === YT.PlayerState.ENDED) {
         var next = current + 1;
         if (next < ids.length) {
           current = next;
+          seeked  = true; // τα επόμενα videos ξεκινούν από την αρχή
           player.loadVideoById(ids[current]);
         }
-        // Αν φτάσουμε στο τέλος, μένει στο τελευταίο — δεν κάνει loop
       }
     }
   }
